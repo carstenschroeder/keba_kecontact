@@ -1,0 +1,8 @@
+{
+  "domain": "keba_kecontact",
+  "name": "Keba KeContact custom integration",
+  "documentation": "",
+  "dependencies": [],
+  "codeowners": ["@carstenschroeder"],
+  "requirements": []
+}
