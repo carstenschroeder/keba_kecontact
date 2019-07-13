@@ -45,6 +45,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
 class KebaKeContactSensor(Entity):
 
     def __init__(self, name, unit_of_measurement, gateway):
+        self._fieldname = name
         self._name = gateway.name + '_' + name
         self._unique_id = gateway.host + '_' + name
         self._unit_of_measurement = unit_of_measurement
@@ -78,9 +79,9 @@ class KebaKeContactSensor(Entity):
         """Update state of sensor."""
         try:
             if self._gateway.is_valid:
-                self._state = self._gateway.getreportdata(self._name)
+                self._state = self._gateway.getreportdata(self._fieldname)
 
-                if self._name == "E total":
+                if self._fieldname == "E total":
                     self._state = self._state / 10
             else:
                 self._state = None

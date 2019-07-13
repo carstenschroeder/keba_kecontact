@@ -41,11 +41,12 @@ def setup(hass, config):
 
     conf = config[DOMAIN]
 
+    name = conf.get(CONF_NAME)
     host = conf.get(CONF_HOST)
     port = conf.get(CONF_PORT)
 
     try:
-        hass.data[DOMAIN] = KeContactGateway(host, port)
+        hass.data[DOMAIN] = KeContactGateway(host, port, name)
     except Exception as ex:
         _LOGGER.error(ex)
         return False
@@ -77,8 +78,9 @@ def setup(hass, config):
 
 class KeContactGateway():
 
-    def __init__(self, host, port):
+    def __init__(self, host, port, name):
 
+        self._name = name
         self._host = host
         self._port = port
         self._server_address = (self._host, self._port)
@@ -101,6 +103,10 @@ class KeContactGateway():
     @property
     def host(self):
         return self._host
+
+    @property
+    def name(self):
+        return self._name
 
     @property
     def energy_consumption(self):
