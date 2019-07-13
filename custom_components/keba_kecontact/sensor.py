@@ -45,7 +45,7 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
 class KebaKeContactSensor(Entity):
 
     def __init__(self, name, unit_of_measurement, gateway):
-        self._name = name
+        self._name = gateway.name + '_' + name
         self._unique_id = gateway.host + '_' + name
         self._unit_of_measurement = unit_of_measurement
         self._gateway = gateway
