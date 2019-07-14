@@ -30,15 +30,14 @@ def setup_platform(hass, config, add_entities, discovery_info=None):
     name = config.get(CONF_NAME)
     unit_of_measurement = config.get(CONF_UNIT_OF_MEASUREMENT)
 
-    gateway = hass.data.get(DOMAIN)
+    for gateway in hass.data[DOMAIN].values():
+        # Verify that passed in configuration works
+        if not gateway.is_valid:
+            _LOGGER.error("No valid data received from Keba KeContact")
+            return False
 
-    # Verify that passed in configuration works
-    if not gateway.is_valid:
-        _LOGGER.error("No valid data received from Keba KeContact")
-        return False
-
-    # Add devices
-    add_entities([KebaKeContactSensor(name, unit_of_measurement, gateway)], True)
+        # Add devices
+        add_entities([KebaKeContactSensor(name, unit_of_measurement, gateway)], True)
 
 
 
@@ -47,7 +46,7 @@ class KebaKeContactSensor(Entity):
     def __init__(self, name, unit_of_measurement, gateway):
         self._fieldname = name
         self._name = gateway.name + '_' + name
-        self._unique_id = gateway.host + '_' + name
+        self._unique_id = gateway.name + '_' + gateway.host + '_' + name
         self._unit_of_measurement = unit_of_measurement
         self._gateway = gateway
         self._state = None

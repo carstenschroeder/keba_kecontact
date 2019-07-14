@@ -6,6 +6,9 @@ currtime_command:
     The setting will be active after the delay specified by the time parameter
     (e.g. the command currtime 12000 20 will change the field “Curr user” to 12 A after 20 s).
   fields:
+    name:
+      description: "Name of the device to be called"
+      example: "Keba_P30C"
     current:
       description: "Current setting Current value in mA. Possible values: 0; 6000 - 63000"
       example: 16000

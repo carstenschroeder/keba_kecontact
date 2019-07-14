@@ -6,7 +6,7 @@ from datetime import timedelta
 import voluptuous as vol
 
 # Import the device class from the component that you want to support
-from homeassistant.const import CONF_NAME, CONF_HOST, CONF_PORT
+from homeassistant.const import CONF_DEVICES, CONF_NAME, CONF_HOST, CONF_PORT
 import homeassistant.helpers.config_validation as cv
 from homeassistant.helpers.event import track_time_interval
 
@@ -22,15 +22,21 @@ CONF_CURRENT = 'current'  # Current value in mA. Possible values: 0; 6000 - 6300
 CONF_TIME    = 'time'     # Timeout in seconds before the current will be applied. Possible values: 0; 1 - 860400
 
 # Validation of the user's configuration
+
+DEVICE_CONFIG = vol.Schema({
+    vol.Optional(CONF_NAME, default='keba_kecontact'): cv.string,
+    vol.Required(CONF_HOST): cv.string,
+    vol.Required(CONF_PORT): cv.port,
+})
+
 CONFIG_SCHEMA = vol.Schema({
     DOMAIN: vol.Schema({
-        vol.Optional(CONF_NAME, default='keba_kecontact'): cv.string,
-        vol.Required(CONF_HOST): cv.string,
-        vol.Required(CONF_PORT): cv.port,
+        vol.Required(CONF_DEVICES): vol.All(cv.ensure_list, [DEVICE_CONFIG]),
     })
 }, extra=vol.ALLOW_EXTRA)
 
 SCHEMA_SERVICE_CURRTIME = vol.Schema({
+    vol.Required(CONF_NAME): cv.string,
     vol.Required(CONF_CURRENT): vol.Coerce(int),
     vol.Required(CONF_TIME): vol.Coerce(int),
 })
@@ -39,23 +45,25 @@ SCHEMA_SERVICE_CURRTIME = vol.Schema({
 def setup(hass, config):
     """Set up the Keba KeContact integration."""
 
-    conf = config[DOMAIN]
+    hass.data.setdefault(DOMAIN, {})
 
-    name = conf.get(CONF_NAME)
-    host = conf.get(CONF_HOST)
-    port = conf.get(CONF_PORT)
+    for device_config in config[DOMAIN][CONF_DEVICES]:
+        name = device_config.get(CONF_NAME)
+        host = device_config.get(CONF_HOST)
+        port = device_config.get(CONF_PORT)
 
-    try:
-        hass.data[DOMAIN] = KeContactGateway(host, port, name)
-    except Exception as ex:
-        _LOGGER.error(ex)
-        return False
+        try:
+            gateway = KeContactGateway(host, port, name)
+            hass.data[DOMAIN][name] = gateway
+        except Exception as ex:
+            _LOGGER.error(ex)
 
     def refresh(event_time):
         """Refresh"""
         _LOGGER.debug("Updating...")
         try:
-            hass.data[DOMAIN].update()
+            for gateway in hass.data[DOMAIN].values():
+                gateway.update()
         except Exception as ex:
             _LOGGER.error(ex)
 
@@ -63,13 +71,14 @@ def setup(hass, config):
 
     def handle_currtime_commnd(call):
         """Send currtime command to Keba KeContact"""
+        name = call.data.get(CONF_NAME)
         current = call.data.get(CONF_CURRENT)
         time = call.data.get(CONF_TIME)
 
         _LOGGER.debug("Send currtime command...")
         try:
             command = 'currtime {!r} {!r} '.format(current, time)
-            hass.data[DOMAIN].command(command)
+            hass.data[DOMAIN][name].command(command)
         except Exception as ex:
             _LOGGER.error(ex)
 
@@ -82,6 +91,8 @@ def setup(hass, config):
 
 class KeContactGateway():
 
+    sock = None
+
     def __init__(self, host, port, name):
 
         self._name = name
@@ -92,9 +103,10 @@ class KeContactGateway():
         self._is_valid = None
         self._report = {}
 
-        self._sock = self.UDP_create_socket()
+        if KeContactGateway.sock is None:
+            KeContactGateway.sock = self.UDP_create_socket()
 
-        if self._sock:
+        if KeContactGateway.sock:
             try:
                 self.update()
             except:
@@ -120,14 +132,15 @@ class KeContactGateway():
 
         import socket
 
-        _LOGGER.debug("Trying to create socket on: " + self._host + ":" + str(self._port))
+        _LOGGER.debug("Trying to create UDP socket")
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         # sock.setsockopt(SOL_SOCKET, SO_BROADCAST, 1)
+
         sock.bind(('', self._port))
         if not sock:
-            _LOGGER.error("ERROR Binding socket - " + self._host + ":" + str(self._port))
+            _LOGGER.error("ERROR Binding socket - " + str(self._port))
         elif sock:
-            _LOGGER.debug("Bound to socket: " + self._host + ":" + str(self._port))
+            _LOGGER.debug("Bound to socket: " + str(self._port))
         return sock
 
     def update(self):
@@ -183,8 +196,8 @@ class KeContactGateway():
 
         try:
             # empty receive buffer
-            self._sock.settimeout(0.01)
-            data, server = self._sock.recvfrom(1024)
+            KeContactGateway.sock.settimeout(0.01)
+            data, server = KeContactGateway.sock.recvfrom(1024)
             _LOGGER.error('unexpected data received {!r} from {!r}'.format(data, server))
 
         except:
@@ -193,18 +206,18 @@ class KeContactGateway():
 
         try:
             # set timeout
-            self._sock.settimeout(timeout)
+            KeContactGateway.sock.settimeout(timeout)
 
             # Send data
             if message is not None:
                 _LOGGER.debug('sending {!r}'.format(message))
-                sent = self._sock.sendto(message.encode(), self._server_address)
+                sent = KeContactGateway.sock.sendto(message.encode(), self._server_address)
 
                 time.sleep(0.1)
 
             # Receive response
             _LOGGER.debug('waiting to receive')
-            data, server = self._sock.recvfrom(1024)
+            data, server = KeContactGateway.sock.recvfrom(1024)
             _LOGGER.debug('received {!r} from {!r}'.format(data, server))
 
             return data, server
