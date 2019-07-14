@@ -16,7 +16,10 @@ SCAN_INTERVAL = timedelta(seconds=30)
 
 DOMAIN = 'keba_kecontact'
 
-#SERVICE_WRITE_DATA_BY_NAME = 'write_data_by_name'
+SERVICE_CURRTIME = 'currtime_command'
+
+CONF_CURRENT = 'current'  # Current value in mA. Possible values: 0; 6000 - 63000
+CONF_TIME    = 'time'     # Timeout in seconds before the current will be applied. Possible values: 0; 1 - 860400
 
 # Validation of the user's configuration
 CONFIG_SCHEMA = vol.Schema({
@@ -27,13 +30,10 @@ CONFIG_SCHEMA = vol.Schema({
     })
 }, extra=vol.ALLOW_EXTRA)
 
-# SCHEMA_SERVICE_WRITE_DATA_BY_NAME = vol.Schema({
-#     vol.Required(CONF_ADS_TYPE):
-#         vol.In([ADSTYPE_INT, ADSTYPE_UINT, ADSTYPE_BYTE, ADSTYPE_BOOL,
-#                 ADSTYPE_DINT, ADSTYPE_UDINT]),
-#     vol.Required(CONF_ADS_VALUE): vol.Coerce(int),
-#     vol.Required(CONF_ADS_VAR): cv.string,
-# })
+SCHEMA_SERVICE_CURRTIME = vol.Schema({
+    vol.Required(CONF_CURRENT): vol.Coerce(int),
+    vol.Required(CONF_TIME): vol.Coerce(int),
+})
 
 
 def setup(hass, config):
@@ -54,24 +54,28 @@ def setup(hass, config):
     def refresh(event_time):
         """Refresh"""
         _LOGGER.debug("Updating...")
-        hass.data[DOMAIN].update()
+        try:
+            hass.data[DOMAIN].update()
+        except Exception as ex:
+            _LOGGER.error(ex)
 
     track_time_interval(hass, refresh, SCAN_INTERVAL)
 
-    # def handle_write_data_by_name(call):
-    #     """Write a value to the connected ADS device."""
-    #     ads_var = call.data.get(CONF_ADS_VAR)
-    #     ads_type = call.data.get(CONF_ADS_TYPE)
-    #     value = call.data.get(CONF_ADS_VALUE)
-    #
-    #     try:
-    #         ads.write_by_name(ads_var, value, ads.ADS_TYPEMAP[ads_type])
-    #     except pyads.ADSError as err:
-    #         _LOGGER.error(err)
-    #
-    # hass.services.register(
-    #     DOMAIN, SERVICE_WRITE_DATA_BY_NAME, handle_write_data_by_name,
-    #     schema=SCHEMA_SERVICE_WRITE_DATA_BY_NAME)
+    def handle_currtime_commnd(call):
+        """Send currtime command to Keba KeContact"""
+        current = call.data.get(CONF_CURRENT)
+        time = call.data.get(CONF_TIME)
+
+        _LOGGER.debug("Send currtime command...")
+        try:
+            command = 'currtime {!r} {!r} '.format(current, time)
+            hass.data[DOMAIN].command(command)
+        except Exception as ex:
+            _LOGGER.error(ex)
+
+    hass.services.register(
+        DOMAIN, SERVICE_CURRTIME, handle_currtime_commnd,
+        schema=SCHEMA_SERVICE_CURRTIME)
 
     return True
 
@@ -127,41 +131,86 @@ class KeContactGateway():
         return sock
 
     def update(self):
-        import time
         import json
 
         for i in range(3):
 
             report_no = str(i+1)
 
-            message = b'report ' + report_no.encode()
+            message = 'report ' + report_no
 
             try:
-                # Send data
-                _LOGGER.debug('sending {!r}'.format(message))
-                sent = self._sock.sendto(message, self._server_address)
-
-                time.sleep(0.1)
-
-                # Receive response
-                _LOGGER.debug('waiting to receive')
-                data, server = self._sock.recvfrom(1024)
-                _LOGGER.debug('received {!r}'.format(data))
-
+                data, server = self.UDP_send_receive(message)
             except:
                 self._is_valid = False
                 self._report[report_no] = None
                 raise Exception('UDP error')
-
             try:
                 self._report[report_no] = json.loads(data)
             except:
-                _LOGGER.warning("Data received is no JSON... ---" + str(data))
+                _LOGGER.warning("Data received is no JSON: {!r}".format(data))
                 self._is_valid = False
                 self._report[report_no] = None
                 raise Exception('JSON error')
 
         self._is_valid = True
+
+    def handshake(self):
+
+            try:
+                data, server = self.UDP_send_receive('i')
+            except:
+                _LOGGER.error("Handshake failed")
+                raise Exception('Handshake error')
+
+            if data is None:
+                _LOGGER.error("Handshake failed")
+                raise Exception('Handshake error')
+
+    def command(self, message):
+
+            try:
+                self.handshake()
+                data, server = self.UDP_send_receive(message)
+            except:
+                raise Exception('UDP error')
+
+            if data.decode() != 'TCH-OK :done\n':
+                _LOGGER.error("Command failed: {!r}".format(message))
+
+    def UDP_send_receive(self, message, timeout=2):
+        import time
+
+        try:
+            # empty receive buffer
+            self._sock.settimeout(0.01)
+            data, server = self._sock.recvfrom(1024)
+            _LOGGER.error('unexpected data received {!r} from {!r}'.format(data, server))
+
+        except:
+            _LOGGER.debug('Receive buffer was empty')
+
+
+        try:
+            # set timeout
+            self._sock.settimeout(timeout)
+
+            # Send data
+            if message is not None:
+                _LOGGER.debug('sending {!r}'.format(message))
+                sent = self._sock.sendto(message.encode(), self._server_address)
+
+                time.sleep(0.1)
+
+            # Receive response
+            _LOGGER.debug('waiting to receive')
+            data, server = self._sock.recvfrom(1024)
+            _LOGGER.debug('received {!r} from {!r}'.format(data, server))
+
+            return data, server
+
+        except:
+            raise
 
     def getreportdata(self, name):
         try:
