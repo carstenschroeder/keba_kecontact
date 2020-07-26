@@ -1,0 +1,6 @@
+{
+  "name": "Keba kecontact Integration",
+  "render_readme": true,
+  "domains": ["switch"],
+  "iot_class": ["Local Polling"]
+}
