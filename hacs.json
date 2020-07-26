@@ -1,5 +1,5 @@
 {
-  "name": "Keba kecontact Integration",
+  "name": "Keba KeContact P30 charging station Integration",
   "render_readme": true,
   "domains": ["switch"],
   "iot_class": ["Local Polling"]
