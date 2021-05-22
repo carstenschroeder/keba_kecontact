@@ -1,5 +1,6 @@
 {
   "domain": "keba_kecontact",
+  "version": "0.0.1",
   "name": "Keba KeContact custom integration",
   "documentation": "",
   "dependencies": [],
